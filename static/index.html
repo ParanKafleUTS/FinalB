@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Banana Ripeness Classifier</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #fff9c4 0%, #fff3e0 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ───────────────────────────────────────────── */
+    header {
+      width: 100%;
+      background: #f9a825;
+      padding: 1rem 2rem;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    }
+    header h1 { font-size: 1.8rem; color: #fff; letter-spacing: .5px; }
+    header p  { color: #fff8e1; font-size: .95rem; margin-top: .25rem; }
+
+    /* ── Card ─────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.1);
+      padding: 2rem;
+      margin: 2rem auto;
+      width: min(560px, 94vw);
+    }
+    .card h2 { font-size: 1.15rem; color: #5d4037; margin-bottom: 1.2rem; }
+
+    /* ── Form elements ────────────────────────────────────── */
+    label { display: block; font-size: .9rem; color: #555; margin-bottom: .4rem; }
+
+    .drop-zone {
+      border: 2px dashed #f9a825;
+      border-radius: 8px;
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: background .2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { background: #fff9c4; }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .drop-zone .icon  { font-size: 2.5rem; }
+    .drop-zone .hint  { color: #999; font-size: .85rem; margin-top: .4rem; }
+    #preview-wrap     { margin-top: 1rem; text-align: center; display: none; }
+    #preview-wrap img { max-height: 220px; border-radius: 8px; border: 1px solid #ddd; }
+
+    select, button {
+      width: 100%;
+      padding: .7rem 1rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-top: .6rem;
+    }
+    select { border: 1px solid #ddd; color: #333; background: #fafafa; }
+    select:focus { outline: none; border-color: #f9a825; }
+
+    button#classify-btn {
+      background: #f9a825;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: .4px;
+      transition: background .2s, transform .1s;
+      margin-top: 1.2rem;
+    }
+    button#classify-btn:hover:not(:disabled) { background: #e65100; transform: translateY(-1px); }
+    button#classify-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+    /* ── Results ──────────────────────────────────────────── */
+    #results { display: none; }
+    .result-badge {
+      display: inline-block;
+      padding: .4rem 1.1rem;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: .6rem;
+    }
+    .badge-unripe   { background: #c8e6c9; color: #1b5e20; }
+    .badge-ripe     { background: #fff9c4; color: #f57f17; }
+    .badge-overripe { background: #ffe0b2; color: #e65100; }
+    .badge-rotten   { background: #ffcdd2; color: #b71c1c; }
+
+    .confidence-bar-wrap {
+      background: #eee; border-radius: 8px; height: 10px;
+      margin-bottom: 1rem; overflow: hidden;
+    }
+    .confidence-bar {
+      height: 100%; background: #f9a825; border-radius: 8px;
+      transition: width .5s ease;
+    }
+
+    .recipes h3 { font-size: 1rem; color: #5d4037; margin-bottom: .6rem; }
+    .recipes ul { padding-left: 1.2rem; color: #555; line-height: 1.9; font-size: .93rem; }
+
+    /* ── Spinner ──────────────────────────────────────────── */
+    .spinner {
+      display: none; border: 4px solid #f3f3f3;
+      border-top: 4px solid #f9a825;
+      border-radius: 50%; width: 36px; height: 36px;
+      animation: spin .8s linear infinite;
+      margin: 1rem auto 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg { color: #c62828; font-size: .9rem; margin-top: .8rem; }
+    footer { color: #bbb; font-size: .8rem; margin: 1rem 0 2rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍌 Banana Ripeness Classifier</h1>
+  <p>Upload a banana image, pick a model, and get an instant ripeness prediction with recipe ideas.</p>
+</header>
+
+<main class="card">
+  <h2>Classify a Banana</h2>
+
+  <!-- Image upload -->
+  <label for="imageInput">Banana Image</label>
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📁</div>
+    <div>Drag &amp; drop an image or <strong>click to browse</strong></div>
+    <div class="hint">Supports JPG, PNG, WEBP</div>
+    <input type="file" id="imageInput" accept="image/*" />
+  </div>
+  <div id="preview-wrap">
+    <img id="preview" src="" alt="Preview" />
+  </div>
+
+  <!-- Model selector -->
+  <label for="modelSelect" style="margin-top:1.2rem;">Model</label>
+  <select id="modelSelect">
+    <option value="efficientnet">EfficientNet B0</option>
+    <option value="efficientnetv2">EfficientNetV2 S</option>
+    <option value="mobilenet">MobileNetV3 Large</option>
+    <option value="resnet">ResNet-50</option>
+  </select>
+
+  <!-- Submit -->
+  <button id="classify-btn" disabled>🔍 Classify</button>
+  <div class="spinner" id="spinner"></div>
+  <div class="error-msg" id="error-msg"></div>
+</main>
+
+<!-- Results card -->
+<section class="card" id="results">
+  <h2>Prediction Result</h2>
+  <p>Ripeness: <span class="result-badge" id="badge"></span></p>
+  <div class="confidence-bar-wrap">
+    <div class="confidence-bar" id="conf-bar" style="width:0%"></div>
+  </div>
+  <p id="conf-text" style="color:#777;font-size:.88rem;margin-bottom:1rem;"></p>
+
+  <div class="recipes" id="recipes">
+    <h3>🍽️ Suggested Recipes</h3>
+    <ul id="recipe-list"></ul>
+  </div>
+</section>
+
+<footer>Banana Ripeness Classifier &mdash; Powered by FastAPI &amp; PyTorch</footer>
+
+<script>
+  // ── recipe suggestions ───────────────────────────────────
+  const RECIPES = {
+    unripe: [
+      'Green banana curry',
+      'Raw banana chips (baked)',
+      'Unripe banana stir-fry',
+      'Plantain soup',
+    ],
+    ripe: [
+      'Classic banana smoothie',
+      'Banana pancakes',
+      'Banana oat muffins',
+      'Banana foster dessert',
+    ],
+    overripe: [
+      'Banana bread (classic)',
+      'Banana ice cream (nice cream)',
+      'Banana protein shake',
+      'Caramelised banana toast',
+    ],
+    rotten: [
+      '⚠️ This banana is no longer safe to eat.',
+      'Please discard it appropriately.',
+    ],
+  };
+
+  const BADGE_CLASS = {
+    unripe:   'badge-unripe',
+    ripe:     'badge-ripe',
+    overripe: 'badge-overripe',
+    rotten:   'badge-rotten',
+  };
+
+  // ── DOM refs ─────────────────────────────────────────────
+  const dropZone    = document.getElementById('dropZone');
+  const imageInput  = document.getElementById('imageInput');
+  const previewWrap = document.getElementById('preview-wrap');
+  const preview     = document.getElementById('preview');
+  const modelSelect = document.getElementById('modelSelect');
+  const classifyBtn = document.getElementById('classify-btn');
+  const spinner     = document.getElementById('spinner');
+  const errorMsg    = document.getElementById('error-msg');
+  const resultsCard = document.getElementById('results');
+  const badge       = document.getElementById('badge');
+  const confBar     = document.getElementById('conf-bar');
+  const confText    = document.getElementById('conf-text');
+  const recipeList  = document.getElementById('recipe-list');
+
+  // ── drag & drop ──────────────────────────────────────────
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) {
+      imageInput.files = e.dataTransfer.files;
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  imageInput.addEventListener('change', () => {
+    if (imageInput.files[0]) handleFile(imageInput.files[0]);
+  });
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      preview.src = e.target.result;
+      previewWrap.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+    classifyBtn.disabled = false;
+    errorMsg.textContent = '';
+    resultsCard.style.display = 'none';
+  }
+
+  // ── classify ─────────────────────────────────────────────
+  classifyBtn.addEventListener('click', async () => {
+    if (!imageInput.files[0]) return;
+
+    errorMsg.textContent = '';
+    resultsCard.style.display = 'none';
+    classifyBtn.disabled = true;
+    spinner.style.display = 'block';
+
+    const formData = new FormData();
+    formData.append('file', imageInput.files[0]);
+    formData.append('model', modelSelect.value);
+
+    try {
+      const resp = await fetch('/predict', { method: 'POST', body: formData });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      showResults(data);
+    } catch (err) {
+      errorMsg.textContent = `Error: ${err.message}`;
+    } finally {
+      spinner.style.display = 'none';
+      classifyBtn.disabled = false;
+    }
+  });
+
+  function showResults(data) {
+    // data: { prediction: "ripe", confidence: 0.93 }
+    const label = (data.prediction || '').toLowerCase();
+    const pct   = Math.round((data.confidence || 0) * 100);
+
+    badge.textContent  = label.charAt(0).toUpperCase() + label.slice(1);
+    badge.className    = `result-badge ${BADGE_CLASS[label] || ''}`;
+    confBar.style.width = `${pct}%`;
+    confText.textContent = `Confidence: ${pct}%`;
+
+    recipeList.innerHTML = '';
+    (RECIPES[label] || ['No recipe suggestions available.']).forEach((r) => {
+      const li = document.createElement('li');
+      li.textContent = r;
+      recipeList.appendChild(li);
+    });
+
+    resultsCard.style.display = 'block';
+    resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+</script>
+</body>
+</html>
